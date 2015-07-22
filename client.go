@@ -6,11 +6,76 @@ import (
 	"go/build"
 	"io/ioutil"
 	"net/rpc"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"time"
 )
+
+func do_http_client(w http.ResponseWriter,  r *http.Request) int {
+	addr := *g_addr
+	if *g_sock == "unix" {
+		addr = get_socket_filename()
+	}
+
+	// client
+	client, err := rpc.Dial(*g_sock, addr)
+	if err != nil {
+		if *g_sock == "unix" && file_exists(addr) {
+			os.Remove(addr)
+		}
+
+		err = try_run_server()
+		if err != nil {
+			fmt.Printf("%s\n", err.Error())
+			return 1
+		}
+		client, err = try_to_connect(*g_sock, addr)
+		if err != nil {
+			fmt.Printf("%s\n", err.Error())
+			return 1
+		}
+	}
+	defer client.Close()
+
+	
+	context := pack_build_context(&build.Default)
+	file, cursor := prepare_file_filename_cursor_http(r)
+	if len(file) < 0 || cursor < 0 {
+		return 1
+	}
+	f := new(http_json_formatter)
+	c,i := client_auto_complete(client, file, "", cursor, context)
+	f.write(c,i,w)
+	
+	
+	return 0
+}
+
+
+//-------------------------------------------------------------------------
+// ace specific json formatter
+//-------------------------------------------------------------------------
+
+type http_json_formatter struct{}
+
+func (*http_json_formatter) write(candidates []candidate, num int, w http.ResponseWriter) {
+	if candidates == nil {
+		fmt.Fprint(w, "[]")
+		return
+	}
+
+
+	fmt.Fprintf(w, "[")
+	for i, c := range candidates {
+		fmt.Fprintf(w, `{"value": "%s", "name": "%s", "meta": "%s", "score": "%d"}`, c.Name, c.Name, c.Class, 1000+(len(candidates)-i))
+		if i<(len(candidates)-1) {
+			fmt.Fprintf(w, ",")
+		}
+	}
+	fmt.Fprintf(w,"]")
+}
 
 func do_client() int {
 	addr := *g_addr
@@ -98,6 +163,46 @@ func try_to_connect(network, address string) (client *rpc.Client, err error) {
 	}
 
 	return
+}
+
+func prepare_file_filename_cursor_http(r *http.Request) ([]byte, int) {
+	var file []byte
+	var err error
+	var cursor int = -1
+
+	file,err = ioutil.ReadAll(r.Body)
+	defer r.Body.Close()
+	if err != nil {
+		fmt.Println("panic while read body")
+		panic(err.Error())
+	}
+	
+	var skipped int
+	file, skipped = filter_out_shebang(file)
+	if len(r.FormValue("cursor")) > 0 {
+		cursor, err = strconv.Atoi(r.FormValue("cursor"))
+	}
+	if err != nil {
+		fmt.Println("panic while read cursor")
+		panic(err.Error())
+	}
+	offset := ""
+	switch flag.NArg() {
+	case 2:
+		offset = flag.Arg(1)
+	}
+
+	if offset != "" {
+		if offset[0] == 'c' || offset[0] == 'C' {
+			cursor, _ = strconv.Atoi(offset[1:])
+			cursor = char_to_byte_offset(file, cursor)
+		} else {
+			cursor, _ = strconv.Atoi(offset)
+		}
+	}
+
+	cursor -= skipped
+	return file, cursor
 }
 
 func prepare_file_filename_cursor() ([]byte, string, int) {

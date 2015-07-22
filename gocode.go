@@ -11,13 +11,15 @@ import (
 )
 
 var (
-	g_is_server = flag.Bool("s", false, "run a server instead of a client")
-	g_format    = flag.String("f", "nice", "output format (vim | emacs | nice | csv | json)")
-	g_input     = flag.String("in", "", "use this file instead of stdin input")
-	g_sock      = create_sock_flag("sock", "socket type (unix | tcp)")
-	g_addr      = flag.String("addr", "localhost:37373", "address for tcp socket")
-	g_debug     = flag.Bool("debug", false, "enable server-side debug mode")
-	g_profile   = flag.Int("profile", 0, "port on which to expose profiling information for pprof; 0 to disable profiling")
+	g_is_server 	= flag.Bool("s", false, "run a server instead of a client")
+	g_format    	= flag.String("f", "nice", "output format (vim | emacs | nice | csv | json)")
+	g_input    		= flag.String("in", "", "use this file instead of stdin input")
+	g_sock      	= create_sock_flag("sock", "socket type (unix | tcp)")
+	g_http_server 	= flag.Bool("http", false, "run http server")
+	g_http_port 	= flag.String("port", "7524", "run http server on specific port")
+	g_addr      	= flag.String("addr", "localhost:37373", "address for tcp socket")
+	g_debug     	= flag.Bool("debug", false, "enable server-side debug mode")
+	g_profile   	= flag.Int("profile", 0, "port on which to expose profiling information for pprof; 0 to disable profiling")
 )
 
 func get_socket_filename() string {
@@ -30,7 +32,7 @@ func get_socket_filename() string {
 
 func show_usage() {
 	fmt.Fprintf(os.Stderr,
-		"Usage: %s [-s] [-f=<format>] [-in=<path>] [-sock=<type>] [-addr=<addr>]\n"+
+		"Usage: %s [-s] [-http] [-f=<format>] [-in=<path>] [-sock=<type>] [-port=<port>] [-addr=<addr>]\n"+
 			"       <command> [<args>]\n\n",
 		os.Args[0])
 	fmt.Fprintf(os.Stderr,
@@ -66,7 +68,21 @@ func main() {
 		}()
 		retval = do_server()
 	} else {
-		retval = do_client()
+		if *g_http_server == true {
+			fmt.Printf("start http client on %s\n",*g_http_port)
+			http.HandleFunc("/", handler)
+	    	http.ListenAndServe(":" + *g_http_port, nil)
+		} else {
+			retval = do_client()
+		}
 	}
 	os.Exit(retval)
+}
+
+
+func handler(w http.ResponseWriter, r *http.Request) {
+	//allow cross domain AJAX requests
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	do_http_client(w,r)
+
 }
