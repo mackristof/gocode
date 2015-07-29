@@ -119,7 +119,6 @@ func (this *config) set_option(name, value string) string {
 	}
 	this.write()
 	return buf.String()
-
 }
 
 func (this *config) value_and_type() (reflect.Value, reflect.Type) {

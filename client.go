@@ -39,7 +39,7 @@ func do_http_client(w http.ResponseWriter,  r *http.Request) int {
 	}
 	defer client.Close()
 
-	
+
 	context := pack_build_context(&build.Default)
 	file, cursor := prepare_file_filename_cursor_http(r)
 	if len(file) < 0 || cursor < 0 {
@@ -48,8 +48,8 @@ func do_http_client(w http.ResponseWriter,  r *http.Request) int {
 	f := new(http_json_formatter)
 	c,i := client_auto_complete(client, file, "", cursor, context)
 	f.write(c,i,w)
-	
-	
+
+
 	return 0
 }
 
@@ -69,7 +69,11 @@ func (*http_json_formatter) write(candidates []candidate, num int, w http.Respon
 
 	fmt.Fprintf(w, "[")
 	for i, c := range candidates {
-		fmt.Fprintf(w, `{"value": "%s", "name": "%s", "meta": "%s", "score": "%d"}`, c.Name, c.Name, c.Class, 1000+(len(candidates)-i))
+		if has_prefix(c.Type, "func",true) {
+			fmt.Fprintf(w, `{"value": "%s()", "name": "%s", "meta": "%s", "score": "%d", "type": "%s"}`, c.Name, c.Name, c.Class, 1000+(len(candidates)-i),c.Type)
+		} else {
+			fmt.Fprintf(w, `{"value": "%s", "name": "%s", "meta": "%s", "score": "%d", "type": "%s"}`, c.Name, c.Name, c.Class, 1000+(len(candidates)-i),c.Type)
+		}
 		if i<(len(candidates)-1) {
 			fmt.Fprintf(w, ",")
 		}
@@ -176,7 +180,7 @@ func prepare_file_filename_cursor_http(r *http.Request) ([]byte, int) {
 		fmt.Println("panic while read body")
 		panic(err.Error())
 	}
-	
+
 	var skipped int
 	file, skipped = filter_out_shebang(file)
 	if len(r.FormValue("cursor")) > 0 {
